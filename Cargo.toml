@@ -1,0 +1,29 @@
+[package]
+name          = "numbrs"
+version       = "0.1.0"
+edition       = "2024"
+authors       = ["UniquePython"]
+description   = ""
+license       = "MIT"
+repository    = "https://github.com/UniquePython/numbrs"
+homepage      = "https://github.com/UniquePython/numbrs"
+readme        = "README.md"
+keywords      = []
+categories    = []
+exclude       = [".gitignore"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[dev-dependencies]
+
+[profile.dev]
+opt-level     = 0
+debug         = true
+
+[profile.release]
+opt-level     = 3
+lto           = true
+codegen-units = 1
+strip         = true
