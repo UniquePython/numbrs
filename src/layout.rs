@@ -12,10 +12,10 @@ pub fn index_to_offset(indices: &[usize], strides: &Strides, shape: &Shape) -> u
     let mut offset: usize = 0;
 
     for (axis, (idx, stride)) in indices.iter().zip(strides.as_slice()).enumerate() {
-        if *idx >= shape.dim_size(axis) {
+        if *idx >= shape.size_for(axis) {
             panic!(
                 "Index {idx} out of bounds for axis {axis}: [0, {})",
-                shape.dim_size(axis)
+                shape.size_for(axis)
             );
         }
         offset += idx * stride;

@@ -29,7 +29,7 @@ impl Shape {
         self.dims.iter().product()
     }
 
-    pub fn dim_size(&self, axis: usize) -> usize {
+    pub fn size_for(&self, axis: usize) -> usize {
         if axis >= self.rank() {
             panic!(
                 "Axis {axis} is out of bounds: [0, {len})",
@@ -89,14 +89,14 @@ mod tests {
     #[test]
     fn dim_size_works() {
         let s: Shape = Shape::new(vec![10, 20, 30]);
-        assert_eq!(s.dim_size(1), 20);
+        assert_eq!(s.size_for(1), 20);
     }
 
     #[test]
     #[should_panic(expected = "Axis")]
     fn dim_size_out_of_bounds_panics() {
         let s: Shape = Shape::new(vec![1, 2]);
-        s.dim_size(5);
+        s.size_for(5);
     }
 
     #[test]
