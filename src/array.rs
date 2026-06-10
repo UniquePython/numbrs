@@ -2,6 +2,7 @@ use crate::{buffer::RawBuffer, layout::index_to_offset, shape::Shape, strides::S
 
 pub struct NdArray<T> {
     data: RawBuffer<T>,
+    offset: usize,
     shape: Shape,
     strides: Strides,
 }
@@ -20,6 +21,7 @@ impl<T> NdArray<T> {
 
         Self {
             data: RawBuffer::new(data),
+            offset: 0,
             shape,
             strides,
         }
@@ -53,13 +55,15 @@ impl<T> NdArray<T> {
     where
         T: Clone,
     {
-        self.data
-            .get(index_to_offset(indices, &self.strides, &self.shape))
+        let local_offset: usize = index_to_offset(indices, &self.strides, &self.shape);
+
+        self.data.get(self.offset + local_offset)
     }
 
     pub fn set(&mut self, indices: &[usize], value: T) {
-        self.data
-            .set(index_to_offset(indices, &self.strides, &self.shape), value);
+        let local_offset: usize = index_to_offset(indices, &self.strides, &self.shape);
+
+        self.data.set(self.offset + local_offset, value);
     }
 }
 
