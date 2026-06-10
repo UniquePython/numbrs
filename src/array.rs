@@ -57,7 +57,7 @@ impl<T> NdArray<T> {
     {
         let local_offset: usize = index_to_offset(indices, &self.strides, &self.shape);
 
-        self.data.get(self.offset + local_offset)
+        self.data.get(self.offset + local_offset).clone()
     }
 
     pub fn set(&mut self, indices: &[usize], value: T) {
