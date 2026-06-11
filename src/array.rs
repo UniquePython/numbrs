@@ -1,7 +1,10 @@
 use crate::{buffer::RawBuffer, layout::index_to_offset, shape::Shape, strides::Strides};
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 pub struct NdArray<T> {
-    data: RawBuffer<T>,
+    data: Rc<RefCell<RawBuffer<T>>>,
     offset: usize,
     shape: Shape,
     strides: Strides,
@@ -20,7 +23,7 @@ impl<T> NdArray<T> {
         let strides: Strides = Strides::from_shape_c(&shape);
 
         Self {
-            data: RawBuffer::new(data),
+            data: Rc::new(RefCell::new(RawBuffer::new(data))),
             offset: 0,
             shape,
             strides,
@@ -57,13 +60,15 @@ impl<T> NdArray<T> {
     {
         let local_offset: usize = index_to_offset(indices, &self.strides, &self.shape);
 
-        self.data.get(self.offset + local_offset).clone()
+        self.data.borrow().get(self.offset + local_offset).clone()
     }
 
     pub fn set(&mut self, indices: &[usize], value: T) {
         let local_offset: usize = index_to_offset(indices, &self.strides, &self.shape);
 
-        self.data.set(self.offset + local_offset, value);
+        self.data
+            .borrow_mut()
+            .set(self.offset + local_offset, value);
     }
 }
 
