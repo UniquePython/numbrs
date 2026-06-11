@@ -3,6 +3,12 @@ use crate::{buffer::RawBuffer, layout::index_to_offset, shape::Shape, strides::S
 use std::cell::RefCell;
 use std::rc::Rc;
 
+pub struct AxisSlice {
+    pub start: usize,
+    pub end: usize,
+    pub step: usize,
+}
+
 pub struct NdArray<T> {
     data: Rc<RefCell<RawBuffer<T>>>,
     offset: usize,
@@ -87,6 +93,59 @@ impl<T> NdArray<T> {
             offset,
             Shape::new(vec![self.size_for(0)]),
             Strides::new(vec![self.stride_for(0)]),
+        )
+    }
+
+    pub fn slice(&self, slices: &[AxisSlice]) -> NdArray<T> {
+        if slices.len() != self.rank() {
+            panic!(
+                "Expected {} slices for rank {}, found {}",
+                self.rank(),
+                self.rank(),
+                slices.len()
+            );
+        }
+
+        let mut offset: usize = self.offset;
+        let mut shape: Vec<usize> = Vec::with_capacity(self.rank());
+        let mut strides: Vec<usize> = Vec::with_capacity(self.rank());
+
+        for (axis, slice) in slices.iter().enumerate() {
+            let axis_size: usize = self.size_for(axis);
+
+            if slice.step == 0 {
+                panic!("Slice step must be at least 1");
+            }
+
+            if slice.start >= slice.end {
+                panic!(
+                    "Slice start ({}) must be less than end ({})",
+                    slice.start, slice.end
+                );
+            }
+
+            if slice.end > axis_size {
+                panic!(
+                    "Slice end ({}) exceeds axis {} size ({})",
+                    slice.end, axis, axis_size
+                );
+            }
+
+            let stride: usize = self.stride_for(axis);
+
+            offset += slice.start * stride;
+
+            let new_size: usize = (slice.end - slice.start + slice.step - 1) / slice.step;
+
+            shape.push(new_size);
+            strides.push(stride * slice.step);
+        }
+
+        NdArray::from_shared(
+            Rc::clone(&self.data),
+            offset,
+            Shape::new(shape),
+            Strides::new(strides),
         )
     }
 
@@ -228,6 +287,255 @@ mod test {
         col.set(&[0], 99);
 
         assert_eq!(arr.get(&[0, 1]), 99);
+    }
+
+    #[test]
+    fn slice_contiguous_on_one_axis() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4, 5, 6], Shape::new(vec![2, 3]));
+
+        let slice: NdArray<i32> = arr.slice(&[
+            AxisSlice {
+                start: 0,
+                end: 2,
+                step: 1,
+            },
+            AxisSlice {
+                start: 1,
+                end: 3,
+                step: 1,
+            },
+        ]);
+
+        assert_eq!(slice.shape(), &Shape::new(vec![2, 2]));
+
+        assert_eq!(slice.get(&[0, 0]), 2);
+        assert_eq!(slice.get(&[0, 1]), 3);
+        assert_eq!(slice.get(&[1, 0]), 5);
+        assert_eq!(slice.get(&[1, 1]), 6);
+    }
+
+    #[test]
+    fn slice_on_both_axes() {
+        let arr: NdArray<i32> = NdArray::new((0..16).collect(), Shape::new(vec![4, 4]));
+
+        let slice: NdArray<i32> = arr.slice(&[
+            AxisSlice {
+                start: 1,
+                end: 3,
+                step: 1,
+            },
+            AxisSlice {
+                start: 1,
+                end: 4,
+                step: 1,
+            },
+        ]);
+
+        assert_eq!(slice.shape(), &Shape::new(vec![2, 3]));
+
+        assert_eq!(slice.get(&[0, 0]), 5);
+        assert_eq!(slice.get(&[0, 1]), 6);
+        assert_eq!(slice.get(&[0, 2]), 7);
+
+        assert_eq!(slice.get(&[1, 0]), 9);
+        assert_eq!(slice.get(&[1, 1]), 10);
+        assert_eq!(slice.get(&[1, 2]), 11);
+    }
+
+    #[test]
+    fn slice_with_step() {
+        let arr: NdArray<i32> = NdArray::new((0..16).collect(), Shape::new(vec![4, 4]));
+
+        let slice: NdArray<i32> = arr.slice(&[
+            AxisSlice {
+                start: 0,
+                end: 4,
+                step: 2,
+            },
+            AxisSlice {
+                start: 0,
+                end: 4,
+                step: 2,
+            },
+        ]);
+
+        assert_eq!(slice.shape(), &Shape::new(vec![2, 2]));
+
+        assert_eq!(slice.get(&[0, 0]), 0);
+        assert_eq!(slice.get(&[0, 1]), 2);
+        assert_eq!(slice.get(&[1, 0]), 8);
+        assert_eq!(slice.get(&[1, 1]), 10);
+    }
+
+    #[test]
+    fn slice_updates_strides_for_steps() {
+        let arr: NdArray<i32> = NdArray::new((0..16).collect(), Shape::new(vec![4, 4]));
+
+        let slice: NdArray<i32> = arr.slice(&[
+            AxisSlice {
+                start: 0,
+                end: 4,
+                step: 2,
+            },
+            AxisSlice {
+                start: 0,
+                end: 4,
+                step: 2,
+            },
+        ]);
+
+        assert_eq!(slice.stride_for(0), 8);
+        assert_eq!(slice.stride_for(1), 2);
+    }
+
+    #[test]
+    fn slice_is_a_view() {
+        let arr: NdArray<i32> = NdArray::new((0..16).collect(), Shape::new(vec![4, 4]));
+
+        let mut slice: NdArray<i32> = arr.slice(&[
+            AxisSlice {
+                start: 1,
+                end: 3,
+                step: 1,
+            },
+            AxisSlice {
+                start: 1,
+                end: 3,
+                step: 1,
+            },
+        ]);
+
+        slice.set(&[0, 0], 99);
+
+        assert_eq!(arr.get(&[1, 1]), 99);
+    }
+
+    #[test]
+    fn slice_step_changes_access_pattern() {
+        let arr: NdArray<i32> = NdArray::new((0..10).collect(), Shape::new(vec![10]));
+
+        let slice: NdArray<i32> = arr.slice(&[AxisSlice {
+            start: 1,
+            end: 10,
+            step: 3,
+        }]);
+
+        assert_eq!(slice.shape(), &Shape::new(vec![3]));
+
+        assert_eq!(slice.get(&[0]), 1);
+        assert_eq!(slice.get(&[1]), 4);
+        assert_eq!(slice.get(&[2]), 7);
+    }
+
+    #[test]
+    #[should_panic]
+    fn slice_panics_when_slice_count_does_not_match_rank() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
+
+        arr.slice(&[AxisSlice {
+            start: 0,
+            end: 2,
+            step: 1,
+        }]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn slice_panics_when_start_equals_end() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
+
+        arr.slice(&[
+            AxisSlice {
+                start: 0,
+                end: 0,
+                step: 1,
+            },
+            AxisSlice {
+                start: 0,
+                end: 2,
+                step: 1,
+            },
+        ]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn slice_panics_when_start_greater_than_end() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
+
+        arr.slice(&[
+            AxisSlice {
+                start: 1,
+                end: 0,
+                step: 1,
+            },
+            AxisSlice {
+                start: 0,
+                end: 2,
+                step: 1,
+            },
+        ]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn slice_panics_when_end_exceeds_axis_size() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
+
+        arr.slice(&[
+            AxisSlice {
+                start: 0,
+                end: 3,
+                step: 1,
+            },
+            AxisSlice {
+                start: 0,
+                end: 2,
+                step: 1,
+            },
+        ]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn slice_panics_when_step_is_zero() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
+
+        arr.slice(&[
+            AxisSlice {
+                start: 0,
+                end: 2,
+                step: 0,
+            },
+            AxisSlice {
+                start: 0,
+                end: 2,
+                step: 1,
+            },
+        ]);
+    }
+
+    #[test]
+    fn slice_applies_offset_correctly() {
+        let arr: NdArray<i32> = NdArray::new((0..16).collect(), Shape::new(vec![4, 4]));
+
+        let slice: NdArray<i32> = arr.slice(&[
+            AxisSlice {
+                start: 2,
+                end: 4,
+                step: 1,
+            },
+            AxisSlice {
+                start: 1,
+                end: 3,
+                step: 1,
+            },
+        ]);
+
+        assert_eq!(slice.get(&[0, 0]), 9);
+        assert_eq!(slice.get(&[0, 1]), 10);
+        assert_eq!(slice.get(&[1, 0]), 13);
+        assert_eq!(slice.get(&[1, 1]), 14);
     }
 
     #[test]
