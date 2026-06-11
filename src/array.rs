@@ -30,6 +30,66 @@ impl<T> NdArray<T> {
         }
     }
 
+    fn from_shared(
+        data: Rc<RefCell<RawBuffer<T>>>,
+        offset: usize,
+        shape: Shape,
+        strides: Strides,
+    ) -> Self {
+        Self {
+            data,
+            offset,
+            shape,
+            strides,
+        }
+    }
+
+    pub fn row(&self, index: usize) -> NdArray<T> {
+        if self.rank() != 2 {
+            panic!("row() requires a 2D array, found rank {}", self.rank());
+        }
+
+        if index >= self.size_for(0) {
+            panic!(
+                "Row index {} out of bounds for axis 0 with size {}",
+                index,
+                self.size_for(0)
+            );
+        }
+
+        let offset: usize = self.offset + index * self.stride_for(0);
+
+        NdArray::from_shared(
+            Rc::clone(&self.data),
+            offset,
+            Shape::new(vec![self.size_for(1)]),
+            Strides::new(vec![self.stride_for(1)]),
+        )
+    }
+
+    pub fn col(&self, index: usize) -> NdArray<T> {
+        if self.rank() != 2 {
+            panic!("col() requires a 2D array, found rank {}", self.rank());
+        }
+
+        if index >= self.size_for(1) {
+            panic!(
+                "Column index {} out of bounds for axis 1 with size {}",
+                index,
+                self.size_for(1)
+            );
+        }
+
+        let offset: usize = self.offset + index * self.stride_for(1);
+
+        NdArray::from_shared(
+            Rc::clone(&self.data),
+            offset,
+            Shape::new(vec![self.size_for(0)]),
+            Strides::new(vec![self.stride_for(0)]),
+        )
+    }
+
     pub fn shape(&self) -> &Shape {
         &self.shape
     }
@@ -105,6 +165,69 @@ mod test {
         assert_eq!(arr.size_for(0), 2);
         assert_eq!(arr.size_for(1), 3);
         assert_eq!(arr.size_for(2), 4);
+    }
+
+    #[test]
+    fn row_returns_correct_shape() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4, 5, 6], Shape::new(vec![2, 3]));
+
+        let row: NdArray<i32> = arr.row(1);
+
+        assert_eq!(row.rank(), 1);
+        assert_eq!(row.shape(), &Shape::new(vec![3]));
+    }
+
+    #[test]
+    fn row_returns_correct_values() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4, 5, 6], Shape::new(vec![2, 3]));
+
+        let row: NdArray<i32> = arr.row(1);
+
+        assert_eq!(row.get(&[0]), 4);
+        assert_eq!(row.get(&[1]), 5);
+        assert_eq!(row.get(&[2]), 6);
+    }
+
+    #[test]
+    fn row_is_a_view() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4, 5, 6], Shape::new(vec![2, 3]));
+
+        let mut row: NdArray<i32> = arr.row(1);
+
+        row.set(&[1], 99);
+
+        assert_eq!(arr.get(&[1, 1]), 99);
+    }
+
+    #[test]
+    fn col_returns_correct_shape() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4, 5, 6], Shape::new(vec![2, 3]));
+
+        let col: NdArray<i32> = arr.col(1);
+
+        assert_eq!(col.rank(), 1);
+        assert_eq!(col.shape(), &Shape::new(vec![2]));
+    }
+
+    #[test]
+    fn col_returns_correct_values() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4, 5, 6], Shape::new(vec![2, 3]));
+
+        let col: NdArray<i32> = arr.col(1);
+
+        assert_eq!(col.get(&[0]), 2);
+        assert_eq!(col.get(&[1]), 5);
+    }
+
+    #[test]
+    fn col_is_a_view() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4, 5, 6], Shape::new(vec![2, 3]));
+
+        let mut col: NdArray<i32> = arr.col(1);
+
+        col.set(&[0], 99);
+
+        assert_eq!(arr.get(&[0, 1]), 99);
     }
 
     #[test]
@@ -276,6 +399,38 @@ mod test {
         let mut arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
 
         arr.set(&[0, 2], 99);
+    }
+
+    #[test]
+    #[should_panic]
+    fn row_panics_on_1d_array() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3], Shape::new(vec![3]));
+
+        arr.row(0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn col_panics_on_1d_array() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3], Shape::new(vec![3]));
+
+        arr.col(0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn row_panics_when_index_out_of_bounds() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
+
+        arr.row(2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn col_panics_when_index_out_of_bounds() {
+        let arr: NdArray<i32> = NdArray::new(vec![1, 2, 3, 4], Shape::new(vec![2, 2]));
+
+        arr.col(2);
     }
 
     #[test]
